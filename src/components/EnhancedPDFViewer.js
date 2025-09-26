@@ -621,16 +621,7 @@ const EnhancedPDFViewer = React.forwardRef(({
               font = timesRoman;
             }
 
-            // Clear original area
-            page.drawRectangle({
-              x: pdfX - 2,
-              y: pdfY - 2,
-              width: (varInfo.width / 2) + 4,
-              height: (varInfo.fontSize / 2) + 4,
-              color: rgb(1, 1, 1), // White
-            });
-
-            // Draw updated text
+            // Draw updated text directly over the original
             const updatedText = varInfo.originalText.replace(
               varInfo.variablePattern,
               variableValue

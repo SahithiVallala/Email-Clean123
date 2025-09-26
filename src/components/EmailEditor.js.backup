@@ -1,5 +1,3 @@
-
-
 import { extractTextWithNLP } from '../services/pdfContentExtractor';
 import { syncCompliancePhrases } from '../services/legalDictionary';
 import { ensureComplianceClauses, buildVariablesFromEntities } from '../services/complianceAutoInsert';
@@ -10,7 +8,7 @@ import pdfTemplateService from '../services/pdfTemplateService';
 import { extractTextFromPDF } from '../services/pdfContentExtractor';
 import ComplianceAnalysis from './compliance/ComplianceAnalysis';
 import { COMPLIANCE_RULES } from './compliance/complianceRules';
-import ReliablePDFViewer from './ReliablePDFViewer';
+import EnhancedPDFViewer from './EnhancedPDFViewer';
 import EntitiesPanel from './EntitiesPanel';
 import * as pdfjs from 'pdfjs-dist';
 import '../styles/preview.css';
@@ -53,16 +51,6 @@ const EmailEditor = ({ template, onBack }) => {
   const [showRulesManager, setShowRulesManager] = useState(false);
   const [currentRules, setCurrentRules] = useState(COMPLIANCE_RULES);
   const [newRuleData, setNewRuleData] = useState('');
-  
-  // Natural language rule input states
-  const [ruleInputMode, setRuleInputMode] = useState('natural');
-  const [naturalRuleForm, setNaturalRuleForm] = useState({
-    name: '',
-    severity: 'error',
-    description: '',
-    lawReference: '',
-    flaggedPhrases: ''
-  });
   // Variables UX enhancements
   const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
   const [variableSearch, setVariableSearch] = useState('');
@@ -316,104 +304,6 @@ const EmailEditor = ({ template, onBack }) => {
     }
   };
 
-  // Natural language rule processing
-  const generateJSONFromNaturalLanguage = () => {
-    if (!naturalRuleForm.name.trim() || !naturalRuleForm.description.trim()) {
-      return '// Fill in the form above to see the generated JSON';
-    }
-
-    const ruleKey = naturalRuleForm.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const flaggedPhrasesArray = naturalRuleForm.flaggedPhrases
-      .split(',')
-      .map(phrase => phrase.trim())
-      .filter(phrase => phrase.length > 0);
-
-    const ruleObject = {
-      [ruleKey]: {
-        severity: naturalRuleForm.severity,
-        message: naturalRuleForm.description,
-        ...(naturalRuleForm.lawReference && { lawReference: naturalRuleForm.lawReference }),
-        ...(flaggedPhrasesArray.length > 0 && { flaggedPhrases: flaggedPhrasesArray })
-      }
-    };
-
-    return JSON.stringify(ruleObject, null, 2);
-  };
-
-  const handleAddNaturalRule = () => {
-    if (!naturalRuleForm.name.trim() || !naturalRuleForm.description.trim()) {
-      alert('Please fill in the rule name and description.');
-      return;
-    }
-
-    try {
-      const jsonString = generateJSONFromNaturalLanguage();
-      const parsedRule = JSON.parse(jsonString);
-      
-      const updatedRules = { ...currentRules };
-      if (!updatedRules[stateConfig.selectedState]) {
-        updatedRules[stateConfig.selectedState] = { 
-          state: stateConfig.selectedState,
-          rules: {} 
-        };
-      }
-      
-      Object.assign(updatedRules[stateConfig.selectedState].rules, parsedRule);
-      setCurrentRules(updatedRules);
-      
-      // Reset form
-      setNaturalRuleForm({
-        name: '',
-        severity: 'error',
-        description: '',
-        lawReference: '',
-        flaggedPhrases: ''
-      });
-      
-      alert(`Rule created successfully for ${stateConfig.selectedState}!`);
-    } catch (error) {
-      alert('Error creating rule. Please check your input.');
-    }
-  };
-
-  const applySuggestion = (suggestionType) => {
-    const suggestions = {
-      overtime: {
-        name: 'Overtime Pay Requirements',
-        severity: 'error',
-        description: 'Employees must receive overtime pay at 1.5x their regular rate for hours worked over 40 per week.',
-        lawReference: 'Fair Labor Standards Act (FLSA) Section 207',
-        flaggedPhrases: 'overtime, time and a half, 40 hours, weekly hours'
-      },
-      benefits: {
-        name: 'Benefits Disclosure',
-        severity: 'warning',
-        description: 'All employee benefits including health insurance, retirement plans, and paid time off must be clearly disclosed.',
-        lawReference: 'Employee Retirement Income Security Act (ERISA)',
-        flaggedPhrases: 'benefits, health insurance, retirement, PTO, paid time off'
-      },
-      probation: {
-        name: 'Probation Period Limits',
-        severity: 'warning',
-        description: 'Probationary periods cannot exceed 90 days and must be clearly defined with specific evaluation criteria.',
-        lawReference: 'State Employment Law',
-        flaggedPhrases: 'probation, probationary period, trial period, evaluation'
-      },
-      termination: {
-        name: 'At-Will Employment Notice',
-        severity: 'error',
-        description: 'Employment relationship must be clearly defined as at-will with proper notice requirements.',
-        lawReference: 'State Labor Code',
-        flaggedPhrases: 'at-will, termination, employment relationship, notice period'
-      }
-    };
-
-    const suggestion = suggestions[suggestionType];
-    if (suggestion) {
-      setNaturalRuleForm(suggestion);
-    }
-  };
-
   // Initialize template and compliance analysis
   useEffect(() => {
     const initializeAll = async () => {
@@ -602,128 +492,54 @@ useEffect(() => {
       errorCount: Object.values(newFlags).flat().filter(f => f.severity === 'error').length,
       warningCount: Object.values(newFlags).flat().filter(f => f.severity === 'warning').length
     });
+    
     setComplianceFlags(newFlags);
   }, [sentences, stateConfig.selectedState, currentRules]);
 
   const handleDownloadPDF = async () => {
-    setIsGenerating(true);
     try {
+      setIsGenerating(true);
       let bytesToDownload = null;
       
-      // Debug: Log current variables state
-      console.log('Download PDF - Current variables:', variables);
-      console.log('Download PDF - Template content preview:', template?.content?.substring(0, 200));
-      
-      // Prefer exporting from the viewer if we have imported bytes
-      const importedBytesCandidate = importedPdfBytes || importedPdfBytesRef.current;
-      const canUseViewerExport = !!enhancedPdfViewerRef.current && !!importedBytesCandidate;
-
-      if (canUseViewerExport) {
-        // Export enhanced PDF with variable updates directly from the viewer
-        console.log('Downloading enhanced PDF via viewer export...');
-        try {
-          bytesToDownload = await enhancedPdfViewerRef.current.exportPDF();
-        } catch (exportErr) {
-          console.warn('Viewer export threw error - falling back to original imported bytes', exportErr);
-          bytesToDownload = importedBytesCandidate;
-        }
-        const sizeAfterExport = (bytesToDownload?.length ?? bytesToDownload?.byteLength ?? 0);
-        if (!bytesToDownload || sizeAfterExport === 0) {
-          console.warn('Viewer export returned empty - falling back to original imported bytes');
-          bytesToDownload = importedBytesCandidate;
-        }
+      if (isPdfImported && enhancedPdfViewerRef.current) {
+        // Export enhanced PDF with variable updates
+        bytesToDownload = await enhancedPdfViewerRef.current.exportPDF();
       } else if (template && template.content) {
-        // Generate from template with current variables
-        console.log('Generating PDF from template with variables...');
-        console.log('Variables to apply:', variables);
-        
-        // Ensure we have the latest template content
-        let contentToProcess = templateContent || template.content;
-        console.log('Original content preview:', contentToProcess.substring(0, 300));
-        
-        // MANUAL VARIABLE REPLACEMENT - Ensure variables are applied
-        for (const [key, value] of Object.entries(variables)) {
-          if (value && value.trim()) {
-            const regex = new RegExp(`\\[${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'g');
-            contentToProcess = contentToProcess.replace(regex, value);
-            console.log(`Replaced [${key}] with "${value}"`);
-          }
-        }
-        
-        console.log('Content after variable replacement preview:', contentToProcess.substring(0, 300));
-        
+        // Generate from template
         bytesToDownload = await pdfTemplateService.generatePDF(
-          contentToProcess,
-          {}, // Pass empty variables since we already replaced them manually
+          template.content,
+          variables,
           stateConfig.stateBlocks,
           stateConfig.selectedState
         );
       } else {
-        alert('No content available to generate PDF. Please import a template or PDF first.');
+        alert('No content available to generate PDF.');
         setIsGenerating(false);
         return;
       }
       
-      let finalBytes = bytesToDownload;
-      const finalSize = (finalBytes?.length ?? finalBytes?.byteLength ?? 0);
-      if (!finalBytes || finalSize === 0) {
-        throw new Error('Generated PDF is empty');
-      }
-
-      // Coerce to Uint8Array and validate header; fallback to imported bytes if header missing
-      let finalUA = finalBytes instanceof Uint8Array
-        ? finalBytes
-        : (finalBytes instanceof ArrayBuffer ? new Uint8Array(finalBytes) : new Uint8Array(finalBytes));
-      const header = String.fromCharCode(...finalUA.subarray(0, 4));
-      if (!header.startsWith('%PDF')) {
-        console.warn('Download: Output missing %PDF header, attempting fallback to original imported bytes');
-        const importedBytesCandidate2 = importedPdfBytes || importedPdfBytesRef.current;
-        if (importedBytesCandidate2) {
-          finalUA = importedBytesCandidate2 instanceof Uint8Array ? importedBytesCandidate2 : new Uint8Array(importedBytesCandidate2);
-        } else {
-          throw new Error('Output is not a valid PDF (no %PDF header)');
-        }
-      }
-
-      const blob = new Blob([finalUA], { type: 'application/pdf' });
+      const blob = new Blob([bytesToDownload], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      
-      // Create a more descriptive filename
-      const timestamp = new Date().toISOString().slice(0, 10);
-      const candidateName = variables['Candidate Name'] || variables['candidate_name'] || variables['name'] || 'Candidate';
-      const cleanName = candidateName.replace(/[^a-zA-Z0-9]/g, '_');
-      
       a.href = url;
-      a.download = `Offer_Letter_${cleanName}_${timestamp}.pdf`;
+      a.download = isPdfImported ? 'Updated_Offer_Letter.pdf' : 'Offer_Letter.pdf';
       a.click();
       URL.revokeObjectURL(url);
-      
-      // Show success message
-      alert(`PDF downloaded successfully with all variable updates!\nFile: Offer_Letter_${cleanName}_${timestamp}.pdf`);
-      
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      alert(`Failed to download PDF: ${error.message}\n\nPlease check that all variables are filled and try again.`);
+      alert('Failed to download PDF: ' + error.message);
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleVariableChange = (varName, value) => {
-    console.log(`Variable changed: ${varName} = ${value}`);
-    setVariables(prev => {
-      const updated = { ...prev, [varName]: value };
-      console.log('Updated variables state:', updated);
-      return updated;
-    });
-    
+    setVariables(prev => ({ ...prev, [varName]: value }));
     // Debounce preview refresh for a smoother HR workflow
     if (variableChangeTimerRef.current) {
       clearTimeout(variableChangeTimerRef.current);
     }
     variableChangeTimerRef.current = setTimeout(() => {
-      console.log('Refreshing preview with updated variables...');
       generateProfessionalPreview();
     }, 400);
   };
@@ -906,7 +722,7 @@ useEffect(() => {
           <button 
             className="btn btn-primary" 
             onClick={handleDownloadPDF}
-            disabled={isGenerating || (!templateLoaded && !isPdfImported && !isPdfImportedRef.current)}
+            disabled={isGenerating || !templateLoaded}
           >
             {isGenerating ? (
               <>
@@ -969,18 +785,17 @@ useEffect(() => {
           ) : isPdfImported || isPdfImportedRef.current ? (
             <div className="pdf-viewport">
               {/* Enhanced PDF viewer with real-time variable updates */}
-              {console.log('Rendering ReliablePDFViewer with:', {
+              {console.log('Rendering EnhancedPDFViewer with:', {
                 importedPdfBytes: !!importedPdfBytes,
                 importedPdfBytesLength: importedPdfBytes?.byteLength || 0,
                 importedPdfBytesRef: !!importedPdfBytesRef.current,
                 importedPdfBytesRefLength: importedPdfBytesRef.current?.byteLength || 0,
                 isPdfImported,
                 isPdfImportedRef: isPdfImportedRef.current,
-                variablesCount: Object.keys(variables || {}).length,
-                pdfImportKey
+                variablesCount: Object.keys(variables).length
               })}
-              {(importedPdfBytes || importedPdfBytesRef.current) ? (
-                <ReliablePDFViewer
+              {(importedPdfBytes && importedPdfBytes.byteLength > 0) || (importedPdfBytesRef.current && importedPdfBytesRef.current.byteLength > 0) ? (
+                <EnhancedPDFViewer
                   key={`pdf-viewer-${pdfImportKey}`}
                   ref={enhancedPdfViewerRef}
                   pdfBytes={importedPdfBytes || importedPdfBytesRef.current}
@@ -993,7 +808,7 @@ useEffect(() => {
                 <div className="pdf-placeholder">
                   <p>PDF imported but bytes not available</p>
                   <p style={{ fontSize: '12px', color: '#666' }}>
-                    Debug: isPdfImported={isPdfImported.toString()}, isPdfImportedRef={isPdfImportedRef.current?.toString()}, hasBytes={(!!importedPdfBytes).toString()}, hasBytesRef={(!!importedPdfBytesRef.current).toString()}
+                    Debug: isPdfImported={isPdfImported.toString()}, isPdfImportedRef={isPdfImportedRef.current.toString()}, hasBytes={!!importedPdfBytes}, hasBytesRef={!!importedPdfBytesRef.current}
                   </p>
                 </div>
               )}
@@ -1015,169 +830,151 @@ useEffect(() => {
           )}
         </div>
         
-        {/* Modern Compliance Analysis Panel */}
-        <div className="compliance-analysis-panel">
-          <div className="analysis-header">
-            <div className="analysis-title-section">
-              <div className="analysis-icon">
-                <Shield size={20} />
-              </div>
-              <div className="analysis-title-info">
-                <h4 className="analysis-title">Legal Compliance Issues</h4>
-                <p className="analysis-subtitle">
-                  {sentences.filter(sentence => complianceFlags[sentence.id] && complianceFlags[sentence.id].length > 0).length > 0 
-                    ? `${sentences.filter(sentence => complianceFlags[sentence.id] && complianceFlags[sentence.id].length > 0).length} issues found in ${stateConfig.selectedState} compliance review`
-                    : `${sentences.length} sentences analyzed - showing only non-compliant content`
-                  }
-                </p>
-              </div>
-            </div>
+        {/* Compliance Analysis Panel */}
+        <div style={{ padding: '20px', maxHeight: '400px', overflowY: 'auto', borderTop: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <Shield size={18} />
+              Legal Compliance Analysis ({sentences.length} sentences analyzed):
+            </h4>
             
             {sentences.length > 0 && (
-              <div className="compliance-metrics-badges">
-                <div className="metric-badge error">
-                  <span className="metric-icon">🚨</span>
-                  <span className="metric-count">{Object.values(complianceFlags).flat().filter(f => f.severity === 'error').length}</span>
-                  <span className="metric-label">Critical</span>
-                </div>
-                <div className="metric-badge warning">
-                  <span className="metric-icon">⚠️</span>
-                  <span className="metric-count">{Object.values(complianceFlags).flat().filter(f => f.severity === 'warning').length}</span>
-                  <span className="metric-label">Warnings</span>
-                </div>
-                <div className="metric-badge info">
-                  <span className="metric-icon">🏛️</span>
-                  <span className="metric-text">{stateConfig.selectedState}</span>
-                </div>
+              <div style={{ display: 'flex', gap: '8px', fontSize: '12px' }}>
+                <span style={{
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  backgroundColor: '#f8d7da',
+                  color: '#721c24',
+                  fontWeight: 'bold'
+                }}>
+                  {Object.values(complianceFlags).flat().filter(f => f.severity === 'error').length} Errors
+                </span>
+                <span style={{
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  backgroundColor: '#fff3cd',
+                  color: '#856404',
+                  fontWeight: 'bold'
+                }}>
+                  {Object.values(complianceFlags).flat().filter(f => f.severity === 'warning').length} Warnings
+                </span>
+                <span style={{
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  backgroundColor: '#d1ecf1',
+                  color: '#0c5460',
+                  fontWeight: 'bold'
+                }}>
+                  State: {stateConfig.selectedState}
+                </span>
               </div>
             )}
           </div>
           
-          <div className="analysis-content">
-            {sentences.length === 0 && (
-              <div className="analysis-empty-state">
-                <div className="empty-state-icon">📋</div>
-                <h5>No Content to Analyze</h5>
-                <p>
-                  {isPdfImported ? 
-                    'Import a PDF template or add content to begin compliance analysis.' :
-                    'Add template content or import a PDF to start analyzing for legal compliance.'
-                  }
-                </p>
-                <div className="empty-state-actions">
-                  <button 
-                    className="empty-action-btn"
-                    onClick={() => document.getElementById('offerLetterInput').click()}
-                  >
-                    📄 Import PDF
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            <div className="sentences-analysis">
-              {sentences
-                .filter(sentence => {
-                  // Only show sentences that have compliance issues (errors or warnings)
-                  const hasFlags = complianceFlags[sentence.id];
-                  return hasFlags && hasFlags.length > 0;
-                })
-                .map((sentence) => {
-                  const hasFlags = complianceFlags[sentence.id];
-                  const hasErrors = hasFlags && complianceFlags[sentence.id].some(f => f.severity === 'error');
-                  const hasWarnings = hasFlags && complianceFlags[sentence.id].some(f => f.severity === 'warning');
-                  
-                  return (
-                    <div key={sentence.id} className="sentence-analysis-card">
-                      <div className={`sentence-content ${hasErrors ? 'has-errors' : 'has-warnings'}`}>
-                        <div className="sentence-header">
-                          <span className="section-badge">§{sentence.section}</span>
-                          <div className="sentence-status">
-                            {hasErrors ? (
-                              <span className="status-badge error">🚨 Critical Issues</span>
-                            ) : (
-                              <span className="status-badge warning">⚠️ Needs Review</span>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="sentence-text">
-                          {sentence.text}
-                        </div>
-                      </div>
-                      
-                      <div className="compliance-flags">
-                        {complianceFlags[sentence.id].map((flag, idx) => (
-                          <div key={idx} className={`compliance-flag ${flag.severity}`}>
-                            <div className="flag-header">
-                              <div className="flag-icon">
-                                {flag.severity === 'error' ? '🚨' : '⚠️'}
-                              </div>
-                              <div className="flag-title">
-                                <span className="flag-severity">{flag.severity === 'error' ? 'CRITICAL' : 'WARNING'}</span>
-                                <span className="flag-type">{flag.type.toUpperCase()}</span>
-                              </div>
-                            </div>
-                            
-                            <div className="flag-message">{flag.message}</div>
-                            
-                            <div className="flag-details">
-                              {flag.lawReference && (
-                                <div className="flag-detail legal-reference">
-                                  <span className="detail-icon">📖</span>
-                                  <div className="detail-content">
-                                    <strong>Legal Reference:</strong>
-                                    <span>{flag.lawReference}</span>
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {flag.suggestion && (
-                                <div className="flag-detail suggestion">
-                                  <span className="detail-icon">💡</span>
-                                  <div className="detail-content">
-                                    <strong>Recommendation:</strong>
-                                    <span>{flag.suggestion}</span>
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {flag.alternativeLanguage && (
-                                <div className="flag-detail alternative">
-                                  <span className="detail-icon">✏️</span>
-                                  <div className="detail-content">
-                                    <strong>Suggested Alternative:</strong>
-                                    <span className="alternative-text">"{flag.alternativeLanguage}"</span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })
-              }
-              
-              {/* Show message when all content is compliant */}
-              {sentences.length > 0 && sentences.filter(sentence => complianceFlags[sentence.id] && complianceFlags[sentence.id].length > 0).length === 0 && (
-                <div className="all-compliant-state">
-                  <div className="compliant-icon">✅</div>
-                  <h5>All Content is Compliant!</h5>
-                  <p>Great news! No legal issues were found in the analyzed content.</p>
-                  <div className="compliant-summary">
-                    <span className="summary-badge">
-                      📋 {sentences.length} sentences analyzed
-                    </span>
-                    <span className="summary-badge">
-                      🏛️ {stateConfig.selectedState} compliance verified
-                    </span>
-                  </div>
-                </div>
-              )}
+          {sentences.length === 0 && (
+            <div style={{
+              padding: '16px',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '8px',
+              border: '1px solid #dee2e6',
+              textAlign: 'center',
+              color: '#6c757d'
+            }}>
+              <p>No content available for compliance analysis.</p>
+              <p style={{ fontSize: '14px', marginTop: '8px' }}>
+                {isPdfImported ? 
+                  'Import a PDF or add template content to analyze compliance.' :
+                  'Add template content or import a PDF to analyze compliance.'
+                }
+              </p>
             </div>
-          </div>
+          )}
+          {sentences.map((sentence) => (
+            <div key={sentence.id} style={{ marginBottom: '16px' }}>
+              <div style={{
+                padding: '12px',
+                borderRadius: '8px',
+                backgroundColor: complianceFlags[sentence.id] ? 
+                  (complianceFlags[sentence.id].some(f => f.severity === 'error') ? '#ffebee' : '#fff3e0') : 
+                  '#f8f9fa',
+                border: '1px solid #e0e0e0',
+                borderLeft: complianceFlags[sentence.id] ? 
+                  `4px solid ${complianceFlags[sentence.id].some(f => f.severity === 'error') ? '#dc3545' : '#ffc107'}` : 
+                  '4px solid #6c757d'
+              }}>
+                <strong style={{
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  marginRight: '12px'
+                }}>
+                  §{sentence.section}
+                </strong>
+                <span style={{
+                  backgroundColor: complianceFlags[sentence.id] ? 
+                    (complianceFlags[sentence.id].some(f => f.severity === 'error') ? '#ffcdd2' : '#fff8e1') : 
+                    'transparent',
+                  padding: complianceFlags[sentence.id] ? '3px 6px' : '0',
+                  borderRadius: '3px'
+                }}>
+                  {sentence.text}
+                </span>
+              </div>
+              
+              {complianceFlags[sentence.id] && complianceFlags[sentence.id].map((flag, idx) => (
+                <div key={idx} style={{
+                  backgroundColor: flag.severity === 'error' ? '#f8d7da' : '#fff3cd',
+                  padding: '12px',
+                  margin: '8px 0 8px 24px',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  borderLeft: `3px solid ${flag.severity === 'error' ? '#dc3545' : '#ffc107'}`
+                }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>
+                    {flag.severity === 'error' ? 'ERROR' : 'WARNING'} - {flag.type.toUpperCase()}
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>{flag.message}</div>
+                  
+                  {flag.lawReference && (
+                    <div style={{ 
+                      backgroundColor: '#e9ecef', 
+                      padding: '8px', 
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      marginBottom: '6px'
+                    }}>
+                      <strong>Legal Reference:</strong> {flag.lawReference}
+                    </div>
+                  )}
+                  
+                  {flag.suggestion && (
+                    <div style={{ 
+                      backgroundColor: '#d4edda', 
+                      padding: '8px', 
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      marginBottom: '6px'
+                    }}>
+                      <strong>Suggestion:</strong> {flag.suggestion}
+                    </div>
+                  )}
+                  
+                  {flag.alternativeLanguage && (
+                    <div style={{ 
+                      backgroundColor: '#d1ecf1', 
+                      padding: '8px', 
+                      borderRadius: '4px',
+                      fontSize: '13px'
+                    }}>
+                      <strong>Alternative:</strong> "{flag.alternativeLanguage}"
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -1189,387 +986,116 @@ useEffect(() => {
       .filter(([k]) => !search || k.toLowerCase().includes(search))
       .filter(([k]) => !showFlaggedOnly || (variableMeta[k]?.flaggedOccurrences > 0));
 
-    // Categorize variables for better organization
-    const categorizeVariable = (key) => {
-      const lowerKey = key.toLowerCase();
-      if (lowerKey.includes('name') || lowerKey.includes('candidate') || lowerKey.includes('employee')) return 'personal';
-      if (lowerKey.includes('company') || lowerKey.includes('organization') || lowerKey.includes('employer')) return 'company';
-      if (lowerKey.includes('position') || lowerKey.includes('title') || lowerKey.includes('job') || lowerKey.includes('role')) return 'position';
-      if (lowerKey.includes('salary') || lowerKey.includes('compensation') || lowerKey.includes('pay') || lowerKey.includes('wage')) return 'compensation';
-      if (lowerKey.includes('date') || lowerKey.includes('start') || lowerKey.includes('end') || lowerKey.includes('time')) return 'dates';
-      return 'other';
-    };
-
-    const categories = {
-      personal: { title: '👤 Personal Information', color: '#3b82f6', bgColor: '#eff6ff' },
-      company: { title: '🏢 Company Details', color: '#8b5cf6', bgColor: '#f3e8ff' },
-      position: { title: '💼 Job Information', color: '#10b981', bgColor: '#ecfdf5' },
-      compensation: { title: '💰 Compensation', color: '#f59e0b', bgColor: '#fffbeb' },
-      dates: { title: '📅 Important Dates', color: '#ef4444', bgColor: '#fef2f2' },
-      other: { title: '📋 Other Details', color: '#6b7280', bgColor: '#f9fafb' }
-    };
-
-    const categorizedEntries = entries.reduce((acc, [key, value]) => {
-      const category = categorizeVariable(key);
-      if (!acc[category]) acc[category] = [];
-      acc[category].push([key, value]);
-      return acc;
-    }, {});
-
-    const completedCount = entries.filter(([_, value]) => value && value.trim()).length;
-    const totalCount = entries.length;
-    const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-
     return (
-      <div className="modern-variables-tab">
-        {/* Modern Header with Stats */}
-        <div className="variables-header">
-          <div className="completion-stats">
-            <div className="completion-circle">
-              <svg className="progress-ring" width="60" height="60">
-                <circle
-                  className="progress-ring-bg"
-                  stroke="#e5e7eb"
-                  strokeWidth="4"
-                  fill="transparent"
-                  r="26"
-                  cx="30"
-                  cy="30"
-                />
-                <circle
-                  className="progress-ring-fill"
-                  stroke="#10b981"
-                  strokeWidth="4"
-                  fill="transparent"
-                  r="26"
-                  cx="30"
-                  cy="30"
-                  strokeDasharray={`${2 * Math.PI * 26}`}
-                  strokeDashoffset={`${2 * Math.PI * 26 * (1 - completionPercentage / 100)}`}
-                />
-              </svg>
-              <div className="completion-text">
-                <span className="percentage">{completionPercentage}%</span>
-              </div>
-            </div>
-            <div className="stats-info">
-              <h4>Variable Completion</h4>
-              <p>{completedCount} of {totalCount} variables completed</p>
-            </div>
-          </div>
+      <div className="tab-content">
+        {/* Controls */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+          <input
+            type="text"
+            value={variableSearch}
+            onChange={(e) => setVariableSearch(e.target.value)}
+            placeholder="Search variables..."
+            style={{ flex: '1', padding: '8px 10px', border: '1px solid #ced4da', borderRadius: '6px' }}
+          />
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#374151' }}>
+            <input
+              type="checkbox"
+              checked={showFlaggedOnly}
+              onChange={(e) => setShowFlaggedOnly(e.target.checked)}
+            />
+            Show variables in flagged sections only
+          </label>
+        </div>
 
-          {/* Modern Search and Filter */}
-          <div className="search-controls">
-            <div className="search-input-wrapper">
-              <svg className="search-icon" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-              </svg>
+        <div className="variables-list-invoice-style">
+          {entries.length === 0 && (
+            <div className="empty-state" style={{ padding: '16px' }}>
+              <p>No variables match your filter.</p>
+            </div>
+          )}
+          {entries.map(([key, value]) => (
+            <div key={key} className="variable-row" style={{ alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: '0 0 220px', marginRight: '10px' }}>
+                <input
+                  type="text"
+                  value={key}
+                  readOnly
+                  className="variable-name-input"
+                  style={{ padding: '8px' }}
+                />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>{variableMeta[key]?.occurrences || 0} use(s)</span>
+                  {variableMeta[key]?.flaggedOccurrences > 0 && (
+                    <span style={{ fontSize: '11px', background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '999px' }}>
+                      {variableMeta[key].flaggedOccurrences} in issues
+                    </span>
+                  )}
+                </div>
+              </div>
               <input
                 type="text"
-                value={variableSearch}
-                onChange={(e) => setVariableSearch(e.target.value)}
-                placeholder="Search variables..."
-                className="modern-search-input"
+                value={value}
+                onChange={(e) => handleVariableChange(key, e.target.value)}
+                className="variable-value-input"
+                placeholder={`Enter ${key}...`}
+                style={{ padding: '8px' }}
               />
             </div>
-            <label className="filter-toggle">
-              <input
-                type="checkbox"
-                checked={showFlaggedOnly}
-                onChange={(e) => setShowFlaggedOnly(e.target.checked)}
-                className="filter-checkbox"
-              />
-              <span className="filter-text">Show flagged only</span>
-            </label>
-          </div>
+          ))}
         </div>
-
-        {/* Categorized Variables */}
-        <div className="variables-categories">
-          {Object.entries(categories).map(([categoryKey, categoryInfo]) => {
-            const categoryEntries = categorizedEntries[categoryKey] || [];
-            if (categoryEntries.length === 0) return null;
-
-            return (
-              <div key={categoryKey} className="variable-category" style={{ '--category-color': categoryInfo.color, '--category-bg': categoryInfo.bgColor }}>
-                <div className="category-header">
-                  <h5 className="category-title">{categoryInfo.title}</h5>
-                  <span className="category-count">{categoryEntries.length} variables</span>
-                </div>
-                
-                <div className="category-variables-grid">
-                  {categoryEntries.map(([key, value]) => {
-                    const getVariableIcon = (variableKey) => {
-                      const lowerKey = variableKey.toLowerCase();
-                      if (lowerKey.includes('name') || lowerKey.includes('candidate')) return '👤';
-                      if (lowerKey.includes('email')) return '📧';
-                      if (lowerKey.includes('phone')) return '📱';
-                      if (lowerKey.includes('address')) return '📍';
-                      if (lowerKey.includes('company')) return '🏢';
-                      if (lowerKey.includes('position') || lowerKey.includes('title') || lowerKey.includes('job')) return '💼';
-                      if (lowerKey.includes('salary') || lowerKey.includes('pay')) return '💰';
-                      if (lowerKey.includes('date') || lowerKey.includes('start') || lowerKey.includes('end')) return '📅';
-                      if (lowerKey.includes('department')) return '🏛️';
-                      if (lowerKey.includes('manager') || lowerKey.includes('supervisor')) return '👨‍💼';
-                      if (lowerKey.includes('location')) return '🌍';
-                      if (lowerKey.includes('experience')) return '⭐';
-                      return '📋';
-                    };
-
-                    return (
-                      <div key={key} className="compact-variable-card">
-                        <div className="variable-header">
-                          <div className="variable-icon">{getVariableIcon(key)}</div>
-                          <div className="variable-info-compact">
-                            <span className="variable-name-compact">{key}</span>
-                            <div className="variable-badges">
-                              <span className="usage-badge">{variableMeta[key]?.occurrences || 0}</span>
-                              {variableMeta[key]?.flaggedOccurrences > 0 && (
-                                <span className="flag-badge-compact">⚠️</span>
-                              )}
-                              {value && value.trim() ? (
-                                <span className="completed-badge-compact">✓</span>
-                              ) : (
-                                <span className="pending-badge-compact">○</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <input
-                          type="text"
-                          value={value}
-                          onChange={(e) => handleVariableChange(key, e.target.value)}
-                          className="compact-variable-input"
-                          placeholder={`Enter ${key.toLowerCase()}...`}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {entries.length === 0 && (
-          <div className="empty-state-modern">
-            <div className="empty-icon">📝</div>
-            <h3>No variables found</h3>
-            <p>Try adjusting your search or import a template to get started.</p>
-          </div>
-        )}
       </div>
     );
   };
 
-  const renderStateConfigTab = () => {
-    const currentStateRules = currentRules[stateConfig.selectedState]?.rules || {};
-    const ruleCount = Object.keys(currentStateRules).length;
-    const errorRules = Object.values(currentStateRules).filter(rule => rule.severity === 'error').length;
-    const warningRules = ruleCount - errorRules;
-
-    return (
-      <div className="modern-compliance-tab">
-        {/* Compliance Header with Stats */}
-        <div className="compliance-header">
-          <div className="compliance-stats-card">
-            <div className="stats-icon">
-              <Shield size={24} />
-            </div>
-            <div className="stats-content">
-              <h3>Legal Compliance</h3>
-              <p>Ensure your offer letters meet legal requirements</p>
-              <div className="compliance-metrics">
-                <div className="metric">
-                  <span className="metric-value">{ruleCount}</span>
-                  <span className="metric-label">Total Rules</span>
-                </div>
-                <div className="metric error">
-                  <span className="metric-value">{errorRules}</span>
-                  <span className="metric-label">Critical</span>
-                </div>
-                <div className="metric warning">
-                  <span className="metric-value">{warningRules}</span>
-                  <span className="metric-label">Warnings</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
+  const renderStateConfigTab = () => (
+    <div className="tab-content">
+      <div style={{ padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px', margin: '10px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+            <Shield size={20} /> Legal Compliance Configuration
+          </h3>
           <button 
-            className="manage-rules-btn"
+            className="btn btn-secondary"
             onClick={() => setShowRulesManager(!showRulesManager)}
           >
             <BookOpen size={16} />
-            <span>{showRulesManager ? 'Hide' : 'Manage'} Rules</span>
+            {showRulesManager ? 'Hide' : 'Manage'} Rules
           </button>
         </div>
 
-        {/* State Selection */}
-        <div className="state-selection-card">
-          <div className="state-selector-header">
-            <div className="state-icon">🏛️</div>
-            <div className="state-info">
-              <h4>Jurisdiction Selection</h4>
-              <p>Choose the state for compliance verification</p>
-            </div>
-          </div>
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ fontWeight: '600', marginBottom: '8px', display: 'block' }}>
+            Select State for Legal Compliance Check:
+          </label>
+          <select 
+            value={stateConfig.selectedState} 
+            onChange={(e) => handleStateChange(e.target.value)}
+            style={{ 
+              padding: '8px 12px',
+              border: '1px solid #ced4da',
+              borderRadius: '4px',
+              minWidth: '200px'
+            }}
+          >
+            {US_STATES.map(state => (
+              <option key={state.code} value={state.code}>
+                {state.name}
+              </option>
+            ))}
+          </select>
           
-          <div className="state-selector-wrapper">
-            <select 
-              value={stateConfig.selectedState} 
-              onChange={(e) => handleStateChange(e.target.value)}
-              className="modern-state-select"
-            >
-              {US_STATES.map(state => (
-                <option key={state.code} value={state.code}>
-                  {state.name}
-                </option>
-              ))}
-            </select>
-            
-            <div className="state-meta">
-              <span className="update-info">
-                📅 Last Updated: {currentRules[stateConfig.selectedState]?.lastUpdated || 'Default'}
-              </span>
-            </div>
+          <div style={{ marginTop: '8px', color: '#6c757d', fontSize: '0.875rem' }}>
+            Rules Last Updated: {currentRules[stateConfig.selectedState]?.lastUpdated || 'Default'}
           </div>
         </div>
-
-        {/* Rules Manager */}
+        
         {showRulesManager && (
-          <div className="rules-manager-card">
-            <div className="rules-manager-header">
-              <h4>📝 Rules Manager - {stateConfig.selectedState}</h4>
-              <p>Add and manage compliance rules for this jurisdiction</p>
-            </div>
-
-            <div className="natural-language-rule-editor">
-              <div className="rule-input-tabs">
-                <button 
-                  className={`input-tab ${ruleInputMode === 'natural' ? 'active' : ''}`}
-                  onClick={() => setRuleInputMode('natural')}
-                >
-                  🗣️ Natural Language
-                </button>
-                <button 
-                  className={`input-tab ${ruleInputMode === 'json' ? 'active' : ''}`}
-                  onClick={() => setRuleInputMode('json')}
-                >
-                  📝 JSON Format
-                </button>
-              </div>
-
-              {ruleInputMode === 'natural' ? (
-                <div className="natural-language-input">
-                  <label className="rule-editor-label">Describe the compliance rule in plain English:</label>
-                  
-                  <div className="rule-form-grid">
-                    <div className="form-group">
-                      <label className="form-label">Rule Name:</label>
-                      <input
-                        type="text"
-                        value={naturalRuleForm.name}
-                        onChange={(e) => setNaturalRuleForm({...naturalRuleForm, name: e.target.value})}
-                        placeholder="e.g., Minimum Wage Requirement"
-                        className="natural-input"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Severity Level:</label>
-                      <select
-                        value={naturalRuleForm.severity}
-                        onChange={(e) => setNaturalRuleForm({...naturalRuleForm, severity: e.target.value})}
-                        className="natural-select"
-                      >
-                        <option value="error">🚨 Critical (Must Fix)</option>
-                        <option value="warning">⚠️ Warning (Should Review)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Rule Description:</label>
-                    <textarea
-                      value={naturalRuleForm.description}
-                      onChange={(e) => setNaturalRuleForm({...naturalRuleForm, description: e.target.value})}
-                      placeholder="Describe what this rule checks for. For example: 'The salary must be at least $15 per hour to comply with state minimum wage laws.'"
-                      className="natural-textarea"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Legal Reference (Optional):</label>
-                    <input
-                      type="text"
-                      value={naturalRuleForm.lawReference}
-                      onChange={(e) => setNaturalRuleForm({...naturalRuleForm, lawReference: e.target.value})}
-                      placeholder="e.g., California Labor Code Section 1197"
-                      className="natural-input"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Words/Phrases to Flag:</label>
-                    <input
-                      type="text"
-                      value={naturalRuleForm.flaggedPhrases}
-                      onChange={(e) => setNaturalRuleForm({...naturalRuleForm, flaggedPhrases: e.target.value})}
-                      placeholder="Enter comma-separated phrases: minimum wage, hourly rate, compensation"
-                      className="natural-input"
-                    />
-                    <div className="input-help">
-                      💡 Separate multiple phrases with commas
-                    </div>
-                  </div>
-
-                  <div className="ai-suggestions">
-                    <h6>🤖 AI Suggestions:</h6>
-                    <div className="suggestion-chips">
-                      <button 
-                        className="suggestion-chip"
-                        onClick={() => applySuggestion('overtime')}
-                      >
-                        Overtime Pay Requirements
-                      </button>
-                      <button 
-                        className="suggestion-chip"
-                        onClick={() => applySuggestion('benefits')}
-                      >
-                        Benefits Disclosure
-                      </button>
-                      <button 
-                        className="suggestion-chip"
-                        onClick={() => applySuggestion('probation')}
-                      >
-                        Probation Period Limits
-                      </button>
-                      <button 
-                        className="suggestion-chip"
-                        onClick={() => applySuggestion('termination')}
-                      >
-                        At-Will Employment Notice
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="json-preview">
-                    <label className="form-label">📋 Generated JSON Preview:</label>
-                    <pre className="json-preview-code">
-                      {generateJSONFromNaturalLanguage()}
-                    </pre>
-                  </div>
-                </div>
-              ) : (
-                <div className="json-input">
-                  <label className="rule-editor-label">Add New Compliance Rule (JSON Format):</label>
-                  <textarea
-                    value={newRuleData}
-                    onChange={(e) => setNewRuleData(e.target.value)}
-                    placeholder={`{
+          <div style={{ backgroundColor: '#fff', border: '1px solid #dee2e6', borderRadius: '6px', padding: '15px' }}>
+            <h4>Add New Compliance Rules for {stateConfig.selectedState}:</h4>
+            <textarea
+              value={newRuleData}
+              onChange={(e) => setNewRuleData(e.target.value)}
+              placeholder={`{
   "newRuleName": {
     "severity": "error",
     "message": "Description of the rule",
@@ -1577,101 +1103,70 @@ useEffect(() => {
     "flaggedPhrases": ["phrase1", "phrase2"]
   }
 }`}
-                    className="rule-editor-textarea"
-                    rows={8}
-                  />
-                </div>
-              )}
-              
-              <div className="rule-editor-actions">
-                <button 
-                  onClick={ruleInputMode === 'natural' ? handleAddNaturalRule : handleAddRule} 
-                  className="save-rule-btn"
-                  disabled={ruleInputMode === 'natural' ? !naturalRuleForm.name.trim() || !naturalRuleForm.description.trim() : !newRuleData.trim()}
-                >
-                  <span>💾</span>
-                  {ruleInputMode === 'natural' ? 'Create Rule' : 'Save Rule'}
-                </button>
-                <button 
-                  onClick={() => setShowRulesManager(false)} 
-                  className="cancel-rule-btn"
-                >
-                  <span>❌</span>
-                  Cancel
-                </button>
-              </div>
+              rows={10}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #ced4da',
+                borderRadius: '4px',
+                fontFamily: 'monospace',
+                fontSize: '13px',
+                marginBottom: '10px'
+              }}
+            />
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                onClick={handleAddRule} 
+                className="btn btn-primary"
+                disabled={!newRuleData.trim()}
+              >
+                Save Rule
+              </button>
+              <button 
+                onClick={() => setShowRulesManager(false)} 
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
             </div>
 
-            {/* Current Rules Display */}
-            <div className="current-rules-section">
-              <h5>📋 Active Rules for {stateConfig.selectedState}</h5>
-              <div className="rules-grid">
-                {Object.entries(currentStateRules).map(([ruleName, rule]) => (
-                  <div key={ruleName} className="rule-card">
-                    <div className="rule-header">
-                      <div className="rule-icon">
-                        {rule.severity === 'error' ? '🚨' : '⚠️'}
-                      </div>
-                      <div className="rule-info">
-                        <h6 className="rule-name">{ruleName}</h6>
-                        <p className="rule-message">{rule.message}</p>
-                      </div>
-                      <div className={`severity-badge ${rule.severity}`}>
-                        {rule.severity.toUpperCase()}
-                      </div>
-                    </div>
-                    
-                    {rule.lawReference && (
-                      <div className="rule-reference">
-                        📖 {rule.lawReference}
-                      </div>
-                    )}
-                    
-                    {rule.flaggedPhrases && rule.flaggedPhrases.length > 0 && (
-                      <div className="flagged-phrases">
-                        <span className="phrases-label">Flagged Terms:</span>
-                        <div className="phrases-list">
-                          {rule.flaggedPhrases.map((phrase, idx) => (
-                            <span key={idx} className="phrase-tag">"{phrase}"</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+            <div style={{ marginTop: '20px' }}>
+              <h5>Current {stateConfig.selectedState} Rules:</h5>
+              {Object.keys(currentRules[stateConfig.selectedState]?.rules || {}).map(ruleName => (
+                <div key={ruleName} style={{
+                  padding: '8px',
+                  marginBottom: '5px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <strong>{ruleName}:</strong> {currentRules[stateConfig.selectedState].rules[ruleName].message}
                   </div>
-                ))}
-              </div>
-              
-              {ruleCount === 0 && (
-                <div className="no-rules-state">
-                  <div className="no-rules-icon">📜</div>
-                  <h6>No Custom Rules</h6>
-                  <p>Add compliance rules to ensure legal requirements are met</p>
+                  <span style={{
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    fontSize: '0.75em',
+                    backgroundColor: currentRules[stateConfig.selectedState].rules[ruleName].severity === 'error' ? '#dc3545' : '#ffc107',
+                    color: currentRules[stateConfig.selectedState].rules[ruleName].severity === 'error' ? 'white' : '#000'
+                  }}>
+                    {currentRules[stateConfig.selectedState].rules[ruleName].severity.toUpperCase()}
+                  </span>
                 </div>
-              )}
+              ))}
             </div>
           </div>
         )}
       </div>
-    );
-  };
+    </div>
+  );
 
   const renderEditorPanel = () => (
     <div className="editor-panel">
       <div className="panel-header">
         <h3 className="panel-title">Template Editor</h3>
-        <button
-          className="import-offer-btn"
-          onClick={() => document.getElementById('offerLetterInput').click()}
-          title="Import Offer Letter PDF"
-        >
-          <svg className="import-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <polyline points="14,2 14,8 20,8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M12 18V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M9 15L12 12L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <span className="import-text">Import Offer Letter</span>
-        </button>
       </div>
       
       <div className="tab-navigation">
@@ -1688,6 +1183,15 @@ useEffect(() => {
         >
           <Shield size={16} />
           Compliance
+        </button>
+        <button
+          className={`tab-button`}
+          onClick={() => {
+            document.getElementById('offerLetterInput').click();
+          }}
+        >
+          <FileText size={16} />
+          Import Offer Letter
         </button>
         <input
           type="file"
@@ -1952,6 +1456,3 @@ console.log('NLP processing completed - variables detected and seeded');
 };
 
 export default EmailEditor;
-
-
-

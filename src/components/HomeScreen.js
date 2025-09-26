@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, FileText, Pen, Download, Settings, Users, BarChart3, Shield, Clock, Search } from 'lucide-react';
+import { Plus, FileText, Pen, Download, Settings, Users, BarChart3, Shield, Clock, Search, LogOut } from 'lucide-react';
 import TemplateModal from './TemplateModal';
 
-const HomeScreen = ({ onTemplateSelect, onPDFGenerate }) => {
+const HomeScreen = ({ onTemplateSelect, onPDFGenerate, onLogout }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -123,6 +123,13 @@ Best regards,
             </div>
           </div>
           <div className="header-right">
+            <button 
+              className="logout-btn"
+              onClick={onLogout}
+              title="Logout"
+            >
+              <LogOut size={18} />
+            </button>
             <div className="user-info">
               <div className="user-details">
                 <span className="user-name">HR Administrator</span>
@@ -364,14 +371,24 @@ Best regards,
           gap: 16px;
         }
 
-        .user-info {
+        .logout-btn {
+          width: 36px;
+          height: 36px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          color: rgba(255, 255, 255, 0.8);
+          cursor: pointer;
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 8px 16px;
-          background: #f8fafc;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .logout-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+          border-color: rgba(255, 255, 255, 0.3);
         }
 
         .user-details {
