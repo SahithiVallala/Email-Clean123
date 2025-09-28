@@ -10,7 +10,7 @@ import pdfTemplateService from '../services/pdfTemplateService';
 import { extractTextFromPDF } from '../services/pdfContentExtractor';
 import ComplianceAnalysis from './compliance/ComplianceAnalysis';
 import { COMPLIANCE_RULES } from './compliance/complianceRules';
-import ReliablePDFViewer from './ReliablePDFViewer';
+import DirectInlineEditor from './DirectInlineEditor';
 import EntitiesPanel from './EntitiesPanel';
 import * as pdfjs from 'pdfjs-dist';
 import '../styles/preview.css';
@@ -968,8 +968,8 @@ useEffect(() => {
             </div>
           ) : isPdfImported || isPdfImportedRef.current ? (
             <div className="pdf-viewport">
-              {/* Enhanced PDF viewer with real-time variable updates */}
-              {console.log('Rendering ReliablePDFViewer with:', {
+              {/* Direct inline editor with true placeholder editing */}
+              {console.log('Rendering DirectInlineEditor with:', {
                 importedPdfBytes: !!importedPdfBytes,
                 importedPdfBytesLength: importedPdfBytes?.byteLength || 0,
                 importedPdfBytesRef: !!importedPdfBytesRef.current,
@@ -980,8 +980,8 @@ useEffect(() => {
                 pdfImportKey
               })}
               {(importedPdfBytes || importedPdfBytesRef.current) ? (
-                <ReliablePDFViewer
-                  key={`pdf-viewer-${pdfImportKey}`}
+                <DirectInlineEditor
+                  key={`direct-editor-${pdfImportKey}`}
                   ref={enhancedPdfViewerRef}
                   pdfBytes={importedPdfBytes || importedPdfBytesRef.current}
                   variables={variables}
@@ -1720,14 +1720,14 @@ useEffect(() => {
   onContentChange={(newContent) => {
     // For imported PDFs, don't replace content - just update variables
     console.log('Content change requested, but keeping original PDF structure');
-    // The EnhancedPDFViewer will handle variable overlays automatically
+    // The DirectInlineEditor will handle variable updates automatically
   
 
   }}
   onAfterApply={() => {
-    // Keep the imported PDF and let EnhancedPDFViewer handle variable updates
+    // Keep the imported PDF and let DirectInlineEditor handle variable updates
     console.log('NLP replacement applied - keeping imported PDF structure');
-    // Variables will automatically update as overlays on the imported PDF
+    // Variables will automatically update in the direct inline editor
   }}
 />
       </div>

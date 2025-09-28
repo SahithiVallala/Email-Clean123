@@ -1,0 +1,249 @@
+.direct-inline-editor {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.direct-editor-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.btn-secondary {
+  background: #6b7280;
+  color: white;
+  border-color: #6b7280;
+}
+
+.btn-secondary:hover {
+  background: #4b5563;
+  border-color: #4b5563;
+}
+
+.direct-editor-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-info {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.direct-content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Edit Mode Styles */
+.direct-edit-mode {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.edit-instructions {
+  background: #f0f9ff;
+  border: 1px solid #0ea5e9;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #0c4a6e;
+}
+
+.text-editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.direct-text-editor {
+  flex: 1;
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 16px;
+  font-family: 'Times New Roman', serif;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.direct-text-editor:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.direct-text-editor::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Preview Mode Styles */
+.direct-preview-mode {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  padding: 20px;
+  background: #f8fafc;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.pdf-background {
+  position: relative;
+  z-index: 1;
+}
+
+.pdf-background-canvas {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: white;
+}
+
+.direct-text-layer {
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.direct-text-content {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  font-family: 'Times New Roman', serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: transparent; /* Make text transparent so PDF shows through */
+  pointer-events: auto;
+}
+
+.direct-text-line {
+  margin-bottom: 8px;
+  min-height: 20px;
+}
+
+.direct-variable-replaced {
+  transition: all 0.2s;
+}
+
+.direct-variable-placeholder {
+  transition: all 0.2s;
+}
+
+.direct-variable-replaced:hover,
+.direct-variable-placeholder:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading and placeholder styles */
+.direct-editor-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: #64748b;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e2e8f0;
+  border-top: 3px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.direct-editor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .direct-editor-controls {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+  
+  .direct-edit-mode {
+    padding: 12px;
+  }
+  
+  .direct-preview-mode {
+    padding: 12px;
+  }
+  
+  .direct-text-editor {
+    padding: 12px;
+    font-size: 13px;
+  }
+  
+  .direct-text-content {
+    font-size: 13px;
+  }
+}
